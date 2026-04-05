@@ -10,7 +10,7 @@ import uvicorn
 
 # [DB 설정 영역]
 # '비밀번호입력' 부분을 아까 MySQL 깔 때 설정한 비밀번호로 바꾸세요!
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:비밀번호입력@localhost:3306/upm_db"
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:admin1234@localhost:3306/upm_db"
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
