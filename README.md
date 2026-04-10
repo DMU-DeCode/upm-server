@@ -43,7 +43,6 @@ pip install fastapi uvicorn pydantic mysql-connector-python
 
 ### 2) 서버 실행
 개인 PC 연동 테스트를 위해 외부 접속이 가능하도록 호스트를 0.0.0.0으로 설정합니다.
-```
-bash
+```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
