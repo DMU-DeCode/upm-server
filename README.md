@@ -39,3 +39,11 @@ UPM 프로젝트의 중앙 통제실 역할을 하는 **Python FastAPI 기반 �
 터미널에서 아래 명령어를 입력하여 필요한 라이브러리를 다운로드합니다.
 ```bash
 pip install fastapi uvicorn pydantic mysql-connector-python
+```
+
+### 2) 서버 실행
+개인 PC 연동 테스트를 위해 외부 접속이 가능하도록 호스트를 0.0.0.0으로 설정합니다.
+```
+bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
