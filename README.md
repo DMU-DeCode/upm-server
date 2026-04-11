@@ -68,3 +68,17 @@ uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### 1. 가상환경 및 필수 라이브러리 설치
 ```bash
 pip install fastapi uvicorn sqlalchemy pymysql
+
+---
+
+## 🚀 최신 업데이트 로그 (Update Log)
+
+### [2026-04-11] - 서버 실행 환경 및 DB 최적화 (@JHPractice)
+**주요 변경 사항:**
+- **SQLAlchemy 2.0 호환성 확보**: 구버전 라이브러리 경고(`MovedIn20Warning`)를 해결하여 실행 안정성을 높였습니다.
+- **데이터베이스 자동 초기화**: 서버(`main.py`) 실행 시 MySQL 테이블(`pc_logs`)이 없으면 자동으로 생성하는 기능을 추가했습니다.
+- **코드 오류 수정**: `database.py` 내 엔진 생성 오타를 수정하여 DB 연결 문제를 해결했습니다.
+- **C# 호환성 준비**: C# 메인 프로그램에서 보낼 텔레메트리 데이터(CPU, GPU 온도 등) 수신 API를 구축했습니다.
+
+**실행 전 주의사항:**
+- `database.py` 파일 내 `SQLALCHEMY_DATABASE_URL`의 MySQL 비밀번호를 확인해 주세요 (기본 설정: `admin1234`).
