@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("UPM_Server")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+7ad3fff83d34094194377b6298c7412e55d3932a")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c4bb44ed357ef4243766ca97c830f5375c89fdaf")]
 [assembly: System.Reflection.AssemblyProductAttribute("UPM_Server")]
 [assembly: System.Reflection.AssemblyTitleAttribute("UPM_Server")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -40,3 +40,6 @@ C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\refint\
 C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\UPM_Server.pdb
 C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\UPM_Server.genruntimeconfig.cache
 C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\ref\UPM_Server.dll
+C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\rpswa.dswa.cache.json
+C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\UPM_Server.MvcApplicationPartsAssemblyInfo.cs
+C:\Users\Desktop\Desktop\졸업작품_Server\UPM_Server\obj\Debug\net9.0\UPM_Server.MvcApplicationPartsAssemblyInfo.cache
