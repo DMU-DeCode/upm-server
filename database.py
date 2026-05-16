@@ -2,7 +2,7 @@ from sqlalchemy import create_engine, Column, Integer, Float, String
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 # 1. MySQL 연결 설정 (비밀번호 admin1234, DB이름 upm_db 기준)
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:1234@localhost:3306/upmdecode"
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:1234@localhost:3306/upm_db"
 
 # 2. 엔진 및 세션 설정
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
