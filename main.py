@@ -1,10 +1,10 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime, timezone
 # --- DB 관련 라이브러리 ---
-from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime, desc
+from sqlalchemy import create_engine, Column, Integer, Float, String, DateTime, desc, text, inspect as sa_inspect
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 import uvicorn
 
@@ -22,11 +22,28 @@ class TelemetryLog(Base):
     machineId = Column(String(50))
     cpuUsage = Column(Float)
     ramUsage = Column(Float)
-    gpuTemp = Column(Float)
+    gpuUsage = Column(Float)
     timestamp = Column(DateTime)
 
-# 서버 실행 시 테이블 자동 생성
+# 서버 실행 시 테이블 자동 생성 + 기존 gpuTemp 컬럼 → gpuUsage 마이그레이션
 Base.metadata.create_all(bind=engine)
+
+def migrate_gpu_column():
+    try:
+        inspector = sa_inspect(engine)
+        if inspector.has_table("telemetry_logs"):
+            cols = [c["name"] for c in inspector.get_columns("telemetry_logs")]
+            with engine.begin() as conn:
+                if "gpuTemp" in cols and "gpuUsage" not in cols:
+                    conn.execute(text("ALTER TABLE telemetry_logs CHANGE gpuTemp gpuUsage FLOAT"))
+                    print("✅ DB 마이그레이션 완료: gpuTemp → gpuUsage")
+                elif "gpuUsage" not in cols:
+                    conn.execute(text("ALTER TABLE telemetry_logs ADD COLUMN gpuUsage FLOAT"))
+                    print("✅ DB 컬럼 추가: gpuUsage")
+    except Exception as e:
+        print(f"⚠️ DB 마이그레이션 오류: {e}")
+
+migrate_gpu_column()
 
 # [3. DB 세션 관리 함수 (Dependency Injection)]
 def get_db():
@@ -50,7 +67,8 @@ class TelemetryData(BaseModel):
     machineId: str
     cpuUsagePercent: float
     ramUsagePercent: float
-    gpuTemperatureCelsius: float
+    gpuUsagePercent: Optional[float] = None       # 새 에이전트용
+    gpuTemperatureCelsius: Optional[float] = None  # 기존 에이전트 호환용
     timestamp: datetime
     topProcesses: List[ProcessInfo] = []
 
@@ -59,7 +77,7 @@ class TelemetryResponse(BaseModel):
     machineId: str
     cpuUsage: float
     ramUsage: float
-    gpuTemp: float
+    gpuUsage: float
     timestamp: datetime
 
     class Config:
@@ -73,11 +91,12 @@ async def receive_metrics(data: TelemetryData, db: Session = Depends(get_db)):
     print(f"[{data.timestamp}] 수신 시도: {data.machineId}")
     
     try:
+        gpu_value = data.gpuUsagePercent if data.gpuUsagePercent is not None else (data.gpuTemperatureCelsius or 0.0)
         new_log = TelemetryLog(
             machineId=data.machineId,
             cpuUsage=data.cpuUsagePercent,
             ramUsage=data.ramUsagePercent,
-            gpuTemp=data.gpuTemperatureCelsius,
+            gpuUsage=gpu_value,
             timestamp=data.timestamp
         )
         db.add(new_log)
@@ -236,8 +255,8 @@ async def dashboard():
                     <div class="card-sub" id="curRamId">-</div>
                 </div>
                 <div class="card">
-                    <div class="card-title">LATEST GPU TEMP</div>
-                    <div class="card-value" id="curGpu">0°C</div>
+                    <div class="card-title">LATEST GPU USAGE</div>
+                    <div class="card-value" id="curGpu">0%</div>
                     <div class="card-sub" id="curGpuId">-</div>
                 </div>
             </div>
@@ -248,7 +267,7 @@ async def dashboard():
                     <canvas id="mainChart" height="200"></canvas>
                 </div>
                 <div class="card">
-                    <div class="card-title">GPU TEMPERATURE TREND</div>
+                    <div class="card-title">GPU USAGE TREND (%)</div>
                     <canvas id="gpuChart" height="200"></canvas>
                 </div>
             </div>
@@ -261,7 +280,7 @@ async def dashboard():
                             <th>Machine ID</th>
                             <th>CPU</th>
                             <th>RAM</th>
-                            <th>GPU Temp</th>
+                            <th>GPU Usage</th>
                         </tr>
                     </thead>
                     <tbody id="logTableBody"></tbody>
@@ -292,7 +311,7 @@ async def dashboard():
                 document.getElementById('curCpuId').innerText = latest.machineId;
                 document.getElementById('curRam').innerText = latest.ramUsage.toFixed(1) + '%';
                 document.getElementById('curRamId').innerText = latest.machineId;
-                document.getElementById('curGpu').innerText = latest.gpuTemp.toFixed(1) + '°C';
+                document.getElementById('curGpu').innerText = latest.gpuUsage.toFixed(1) + '%';
                 document.getElementById('curGpuId').innerText = latest.machineId;
             }
 
@@ -305,7 +324,7 @@ async def dashboard():
                         <td><strong>${log.machineId}</strong></td>
                         <td><span class="badge badge-cpu">${log.cpuUsage.toFixed(1)}%</span></td>
                         <td><span class="badge badge-ram">${log.ramUsage.toFixed(1)}%</span></td>
-                        <td><span class="badge badge-gpu">${log.gpuTemp.toFixed(1)}°C</span></td>
+                        <td><span class="badge badge-gpu">${log.gpuUsage.toFixed(1)}%</span></td>
                     </tr>`;
                     tbody.innerHTML += row;
                 });
@@ -336,7 +355,7 @@ async def dashboard():
                     type: 'line',
                     data: {
                         labels: labels,
-                        datasets: [{ label: 'GPU (°C)', data: rev.map(l => l.gpuTemp), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.3, fill: true }]
+                        datasets: [{ label: 'GPU Usage (%)', data: rev.map(l => l.gpuUsage), borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.1)', tension: 0.3, fill: true }]
                     },
                     options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
                 });

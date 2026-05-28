@@ -1,191 +1,242 @@
-# UPM_Server
-# 🖥️ UPM (Universal PC Master) - Global Server
+# UPM Global Server
 
-UPM 프로젝트의 중앙 통제실 역할을 하는 **Python FastAPI 기반 백엔드 서버**입니다. 데스크톱 에이전트(C#)로부터 실시간 하드웨어 데이터를 수집하고, 이를 분석하여 최적화 룰셋을 제공하며 모든 기록을 MySQL 데이터베이스에 영구 저장합니다.
+<div align="center">
 
----
+![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white)
 
-## 📝 1. 프로젝트 개요 (Summary)
+**동양미래대학교 컴퓨터소프트웨어공학과 졸업작품**  
+PC 하드웨어 모니터링 및 원격 최적화 시스템 — **서버 파트**
 
-* **데스크톱 리소스 모니터링**: C# 에이전트가 수집한 CPU, RAM, GPU 수치를 실시간으로 수신합니다.
-* **데이터 영구 보관**: 수집된 모든 하드웨어 텔레메트리를 MySQL(MariaDB)에 저장하여 통계 분석의 기초 자료로 활용합니다.
-* **비동기 고성능 아키텍처**: FastAPI의 비동기(Async) 처리를 통해 다수의 에이전트로부터 오는 데이터를 지연 없이 처리합니다.
-
----
-
-## 🛠️ 2. 기술 스택 (Tech Stack)
-
-* **Language**: Python 3.10+
-* **Framework**: FastAPI
-* **Database**: MySQL 
-* **Communication**: REST API (HTTP POST/GET)
+</div>
 
 ---
 
-## 📂 3. 주요 서버 코드 설명
+## 목차
 
-서버는 크게 두 개의 핵심 엔드포인트(Endpoint)를 제공합니다.
-
-| 경로 (Endpoint) | 방식 | 역할 |
-| :--- | :---: | :--- |
-| `/api/v1/specs` | `POST` | 하드웨어 상세 사양(CPU명, 코어 수 등)을 수신하여 기기를 등록합니다. |
-| `/api/v1/status` | `POST` | 실시간 점유율(CPU%, RAM%, GPU Temp) 데이터를 수신하고 DB에 저장합니다. |
+1. [프로젝트 개요](#-1-프로젝트-개요)
+2. [시스템 아키텍처](#-2-시스템-아키텍처)
+3. [서버의 역할 (기능 상세)](#-3-서버의-역할-기능-상세)
+4. [API 엔드포인트](#-4-api-엔드포인트)
+5. [데이터베이스 구조](#-5-데이터베이스-구조)
+6. [대시보드](#-6-대시보드)
+7. [설치 및 실행](#-7-설치-및-실행)
+8. [서버 접속 방법 (ngrok)](#-8-서버-접속-방법-ngrok)
 
 ---
 
-## 🚀 4. 설치 및 실행 방법 (Installation)
+## 1. 프로젝트 개요
 
-### 1) 필수 패키지 설치
-터미널에서 아래 명령어를 입력하여 필요한 라이브러리를 다운로드합니다.
-```bash
-pip install fastapi uvicorn pydantic mysql-connector-python
+**UPM (Universal PC Master)** 은 여러 대의 PC 하드웨어 상태를 중앙에서 실시간으로 모니터링하고, 글로벌 최적화 룰셋을 배포하는 시스템입니다.
+
+이 레포지토리는 그 시스템의 **중앙 서버(Tier 2)** 를 담당합니다.
+
+| 구분 | 설명 |
+|------|------|
+| 역할 | C# 에이전트로부터 하드웨어 데이터 수집 · 저장 · 제공 |
+| 언어 | Python 3.10+ |
+| 프레임워크 | FastAPI (비동기 REST API) |
+| 데이터베이스 | MySQL 8.0 (SQLAlchemy ORM) |
+| 외부 접속 | ngrok 터널링 지원 |
+
+---
+
+## 2. 시스템 아키텍처
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        UPM 전체 시스템                           │
+│                                                                  │
+│  ┌──────────────┐   HTTP POST    ┌──────────────────────────┐   │
+│  │  PC Agent    │ ─────────────► │   UPM Global Server      │   │
+│  │  (C# / WPF)  │                │   (Python / FastAPI)     │   │
+│  │              │                │                          │   │
+│  │  ▸ CPU 사용률│   HTTP GET     │  ┌────────────────────┐  │   │
+│  │  ▸ RAM 사용률│ ◄───────────── │  │   MySQL Database   │  │   │
+│  │  ▸ GPU 사용률│  최적화 룰셋   │  │  (telemetry_logs)  │  │   │
+│  └──────────────┘                │  └────────────────────┘  │   │
+│                                  │                          │   │
+│  ┌──────────────┐   HTTP GET     │  ┌────────────────────┐  │   │
+│  │   Browser    │ ─────────────► │  │  Web Dashboard     │  │   │
+│  │  (관리자)    │                │  │  (HTML / Chart.js) │  │   │
+│  └──────────────┘                │  └────────────────────┘  │   │
+│                                  └──────────────────────────┘   │
+│                                                                  │
+│   ── 로컬망(LAN) ──────────────────────────────────────────      │
+│   ── 외부망(ngrok 터널) ───────────────────────────────────      │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 2) 서버 실행
-개인 PC 연동 테스트를 위해 외부 접속이 가능하도록 호스트를 0.0.0.0으로 설정합니다.
-```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
+---
 
-# 🛠️ UPM Server - 개인 작업 및 학습 브랜치 (JHPractice)
+## 3. 서버의 역할 (기능 상세)
 
-이 브랜치는 **Dongyang Mirae University 컴퓨터소프트웨어공학과** 졸업 작품인 'PC 하드웨어 모니터링 및 원격 제어 시스템'의 **서버 인프라(Tier 2)**를 개발하고 테스트하는 공간입니다.
+### 실시간 하드웨어 데이터 수집
+C# 에이전트가 주기적으로 서버에 `POST` 요청을 보내면, 서버는 해당 데이터를 수신하여 MySQL DB에 저장합니다.  
+수집 항목: **CPU 사용률(%)**, **RAM 사용률(%)**, **GPU 사용률(%)**
 
-## 📌 이번 브랜치 작업 목표
-1. **FastAPI**를 활용한 데이터 수집 서버 구축
-2. **MySQL** 데이터베이스 연동 및 데이터 영구 저장 로직 구현
+### 글로벌 최적화 룰셋 배포
+서버가 관리하는 `blackList` / `whiteList` 프로세스 목록을 에이전트에게 제공합니다.  
+에이전트는 이 룰을 기반으로 불필요한 프로세스를 자동으로 처리합니다.
+
+### 실시간 모니터링 대시보드
+웹 브라우저에서 `/dashboard` 에 접속하면 모든 PC의 리소스 상태를 한눈에 볼 수 있는 대시보드를 제공합니다.  
+Chart.js 기반 라인 차트로 시간 흐름에 따른 CPU/RAM/GPU 사용률을 시각화합니다.
+
+### 데이터 조회 API
+저장된 로그를 최신순으로 조회할 수 있는 REST API를 제공합니다. 프론트엔드 및 관리 도구와 연동 가능합니다.
 
 ---
 
-## 🏗️ 시스템 아키텍처 (담당 부분)
-- **Framework**: FastAPI (Python)
-- **Database**: MySQL 8.0
+## 4. API 엔드포인트
+
+| 메서드 | 경로 | 설명 |
+|--------|------|------|
+| `POST` | `/api/v1/metrics` | C# 에이전트로부터 하드웨어 데이터를 수신하고 DB에 저장 |
+| `GET` | `/api/v1/logs` | DB에 저장된 텔레메트리 로그 조회 (최신순, 기본 50개) |
+| `GET` | `/api/v1/optimization/rules` | 글로벌 최적화 룰셋(블랙리스트/화이트리스트) 반환 |
+| `GET` | `/dashboard` | 실시간 웹 모니터링 대시보드 |
+| `GET` | `/docs` | FastAPI 자동 생성 API 문서 (Swagger UI) |
+
+### POST `/api/v1/metrics` 요청 예시
+
+```json
+{
+  "machineId": "PC-DESKTOP-001",
+  "cpuUsagePercent": 45.2,
+  "ramUsagePercent": 62.8,
+  "gpuUsagePercent": 78.5,
+  "timestamp": "2026-05-28T14:30:00Z",
+  "topProcesses": [
+    {
+      "processId": 1234,
+      "processName": "chrome.exe",
+      "memoryWorkingSetBytes": 524288000,
+      "isSystemCritical": false
+    }
+  ]
+}
+```
 
 ---
 
-## 🚀 설치 및 실행 방법 (How to Run)
+## 5. 데이터베이스 구조
 
-### 1. 가상환경 및 필수 라이브러리 설치
-```bash
-pip install fastapi uvicorn sqlalchemy pymysql
+### 테이블: `telemetry_logs`
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | INT (PK) | 자동 증가 고유 ID |
+| `machineId` | VARCHAR(50) | PC 고유 식별자 |
+| `cpuUsage` | FLOAT | CPU 사용률 (%) |
+| `ramUsage` | FLOAT | RAM 사용률 (%) |
+| `gpuUsage` | FLOAT | GPU 사용률 (%) |
+| `timestamp` | DATETIME | 데이터 수집 시각 |
+
+> 서버 실행 시 테이블이 없으면 **자동으로 생성**됩니다 (`Base.metadata.create_all`).
+
+---
+
+## 6. 대시보드
+
+`/dashboard` 경로에 브라우저로 접속하면 아래와 같은 실시간 모니터링 화면을 볼 수 있습니다.
+
+- **요약 카드**: 가장 최근에 수신된 CPU / RAM / GPU 사용률을 한눈에 표시
+- **CPU & RAM 트렌드 차트**: 시간 흐름에 따른 CPU·RAM 사용률 추이 (라인 차트)
+- **GPU 사용률 차트**: GPU 사용률 추이 (면적 라인 차트)
+- **로그 테이블**: 최근 10개 로그를 실시간으로 표시 (10초마다 자동 갱신)
+
+---
+
+## 7. 설치 및 실행
+
+### 사전 준비
+
+- Python 3.10 이상
+- MySQL 8.0 실행 중 + `upm_db` 데이터베이스 생성
+
+```sql
+CREATE DATABASE upm_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
+### 패키지 설치
 
-## 🚀 최신 업데이트 로그 (Update Log)
+```bash
+pip install fastapi uvicorn sqlalchemy pymysql pydantic
+```
 
-### [2026-04-11] - 서버 실행 환경 및 DB 최적화 (@JHPractice)
-**주요 변경 사항:**
-- **SQLAlchemy 2.0 호환성 확보**: 구버전 라이브러리 경고(`MovedIn20Warning`)를 해결하여 실행 안정성을 높였습니다.
-- **데이터베이스 자동 초기화**: 서버(`main.py`) 실행 시 MySQL 테이블(`pc_logs`)이 없으면 자동으로 생성하는 기능을 추가했습니다.
-- **코드 오류 수정**: `database.py` 내 엔진 생성 오타를 수정하여 DB 연결 문제를 해결했습니다.
-- **C# 호환성 준비**: C# 메인 프로그램에서 보낼 텔레메트리 데이터(CPU, GPU 온도 등) 수신 API를 구축했습니다.
+### DB 연결 정보 설정
 
-**실행 전 주의사항:**
-- `database.py` 파일 내 `SQLALCHEMY_DATABASE_URL`의 MySQL 비밀번호를 확인해 주세요 (기본 설정: `admin1234`).
+`main.py` 상단의 연결 문자열을 본인 환경에 맞게 수정합니다.
 
+```python
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:비밀번호@localhost:3306/upm_db"
+```
 
-## 🌐 서버 접속 및 협업 가이드
-상황에 따라 두 가지 연결 방법 중 하나를 선택.
+### 서버 실행
 
-### 방법 1. 로컬 네트워크(LAN) 접속
-언제 사용하나요? 팀원들이 같은 공간에서 같은 Wi-Fi(공유기)를 사용 중일 때
+```bash
+python main.py
+```
 
-### 1단계: 내 컴퓨터의 '진짜 주소(로컬 IP)' 알아내기
-지금까지 쓴 127.0.0.1은 "나 자신"이라는 뜻이라 남들은 접속할 수 없습니다. 내 컴퓨터가 공유기(Wi-Fi)로부터 부여받은 진짜 주소를 찾아야함.
+서버가 정상 실행되면 아래 주소로 접속 가능합니다.
 
-VS Code 터미널(PowerShell)에 ipconfig라고 입력하고 엔터.
+| 주소 | 설명 |
+|------|------|
+| `http://localhost:8000/docs` | Swagger API 문서 |
+| `http://localhost:8000/dashboard` | 모니터링 대시보드 |
 
-결과 내용 중 **IPv4 주소**라고 적힌 부분을 찾으세요. (예: 192.168.0.15 또는 172.30.1.20)
+---
 
-이 숫자가 바로 팀원들이 접속할 서버 주소. 이 숫자를 메모해두세요!
+## 8. 서버 접속 방법 (ngrok)
 
-### 2단계: 파이썬 서버 코드 수정하기 (main.py)
-기존에는 서버가 자기 자신(127.0.0.1)의 요청만 받도록 설정. 이를 **"어떤 IP로 들어오는 요청이든 다 받겠다"**는 설정인 0.0.0.0으로 바꿔줘야 합니다.
+팀원이 각자 다른 장소(집, 학교 등)에서 접속할 때 사용합니다.
 
-main.py 파일 맨 아래쪽 uvicorn.run 부분을 다음과 같이 수정.
+**① ngrok 설정 (최초 1회)**
 
-Python
-## 기존 코드
-## uvicorn.run(app, host="127.0.0.1", port=8000)
+1. [ngrok.com](https://ngrok.com) 회원가입 후 Authtoken 복사
+2. 터미널에 입력:
 
-## 수정된 코드 (로컬 네트워크 개방)
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-host="0.0.0.0": 외부(로컬망)에서 들어오는 모든 접속을 허용.
+```bash
+ngrok config add-authtoken 여기에_토큰_붙여넣기
+```
 
-### 3단계: Windows 방화벽 열어주기 (매우 중요!)
-윈도우는 기본적으로 외부에서 내 컴퓨터 포트(8000번)로 들어오는 접속을 차단. 이걸 수동으로 열어줘야 합니다.
+**② 서버 실행 후 터널 오픈**
 
-윈도우 검색창에 **'고급 보안이 설정된 Windows 방화벽'**을 검색해서 실행.
+터미널 창 2개를 엽니다.
 
-왼쪽 메뉴에서 **[인바운드 규칙]**을 클릭.
+```bash
+# 터미널 1: 서버 실행
+python main.py
 
-오른쪽 메뉴에서 **[새 규칙...]**을 클릭.
-
-[포트] 선택 -> [다음] -> **[TCP]**와 [특정 로컬 포트: 8000] 입력 -> [다음].
-
-[연결 허용] 선택 -> [다음] -> 규칙 이름(예: UPM_Server_Open) 입력 후 [마침].
-
-# 🚀 팀원이 접속하는 방법
-이제 모든 준비가 끝났습니다! 서버를 다시 켜고(python main.py), 같은 Wi-Fi를 쓰는 팀원에게 이렇게 알려주세요.
-
-"내 서버 주소는 http://192.168.0.15:8000이야! (1단계에서 찾은 본인 IP 입력)"
-
-팀원이 확인하는 법:
-
-팀원 컴퓨터의 브라우저에서 http://내IP주소:8000/docs에 접속.
-
-페이지가 잘 뜨면 성공!
-
-⚠️ 주의사항 (꼭 읽어보세요!)
-같은 Wi-Fi 사용: 서버 컴퓨터와 팀원 컴퓨터가 반드시 같은 공유기(Wi-Fi)에 연결되어 있어야 합니다. (집에 있는 서버를 학교에 있는 친구가 접속하는 건 다른 기술이 필요해요.)
-
-IP 변동: 공유기를 껐다 켜면 IPv4 주소가 바뀔 수 있으니, 안 될 때는 다시 ipconfig로 주소를 확인.
-
-### 2단계: Windows 방화벽 포트 개방
-윈도우는 외부 접속을 기본 차단하므로, 서버 컴퓨터에서 포트를 열어줘야 합니다.
-
-시작 메뉴에서 '고급 보안이 설정된 Windows 방화벽' 검색 및 실행
-
-왼쪽 [인바운드 규칙] 클릭 -> 오른쪽 [새 규칙...] 클릭
-
-[포트] 선택 -> [다음]
-
-[TCP] 및 [특정 로컬 포트: 8000] 입력 -> [다음]
-
-[연결 허용] 선택 -> [다음]
-
-[도메인, 개인, 공용] 모두 체크 -> [다음]
-
-이름 입력 (예: UPM_Server_Open) 후 [마침]
-
-### 3단계: 팀원 접속 정보
-API 주소: http://[서버IPv4주소]:8000/api/v1/metrics
-
-장점: 별도 설치 불필요, 전송 속도 매우 빠름
-
-한계: 같은 Wi-Fi를 쓰지 않으면 접속 불가
-
-## 방법 2. 외부 네트워크(ngrok) 접속 (권장 ⭐)
-언제 사용하나요? 팀원들이 각자 집이나 서로 다른 장소에서 작업할 때
-
-### 1단계: ngrok 설치 및 토큰 설정
-ngrok 공식 홈페이지 가입 후 프로그램 다운로드
-
-사이트 대시보드의 Your Authtoken 메뉴에서 본인의 토큰 복사
-
-터미널에 입력: ngrok config add-authtoken [본인의_토큰]
-
-### 2단계: 터널링 실행
-먼저 파이썬 서버(main.py)를 실행.
-
-새 터미널 창을 열고 아래 명령어를 입력.
-
-Bash
+# 터미널 2: ngrok 터널 오픈
 ngrok http 8000
-화면에 뜨는 Forwarding 주소(예: https://abcd-123.ngrok-free.app)를 복사해 팀원에게 공유.
+```
 
-### 3단계: 팀원 접속 정보
-API 주소: https://[ngrok주소]/api/v1/metrics
+**③ 팀원에게 주소 공유**
 
-특징: 전 세계 어디서든 접속 가능, https 보안 통신 적용
+ngrok 실행 화면에서 `Forwarding` 항목의 주소를 복사합니다.
+
+```
+Forwarding   https://abcd-123-456.ngrok-free.app -> http://localhost:8000
+```
+
+팀원 접속 주소:
+
+```
+https://abcd-123-456.ngrok-free.app/dashboard       ← 대시보드
+https://abcd-123-456.ngrok-free.app/api/v1/metrics  ← 데이터 수신
+```
+
+> **주의**: ngrok을 재실행하면 주소가 바뀝니다. 주소가 바뀔 때마다 팀원에게 재공유하세요.
+
+---
+
+<div align="center">
+
+동양미래대학교 컴퓨터소프트웨어공학과  
+졸업작품 프로젝트 — UPM (Universal PC Master)
+
+</div>

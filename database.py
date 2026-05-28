@@ -18,7 +18,7 @@ class PCRecord(Base):
     id = Column(Integer, primary_key=True, index=True)
     pc_id = Column(String(50))
     cpu_usage = Column(Float)
-    gpu_temp = Column(Float)
+    gpu_usage = Column(Float)
 
 # 5. 테이블 생성 함수
 def init_db():
