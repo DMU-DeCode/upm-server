@@ -237,6 +237,6 @@ https://abcd-123-456.ngrok-free.app/api/v1/metrics  ← 데이터 수신
 <div align="center">
 
 동양미래대학교 컴퓨터소프트웨어공학과  
-졸업작품 프로젝트 — UPM (Universal PC Master)
+졸업작품 프로젝트 — UPM (Universal PC Manager)
 
 </div>
