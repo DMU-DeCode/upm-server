@@ -1,4 +1,4 @@
-# 🖥️ UPM — Universal PC Manager · Global Server
+# 🖥️ UPM — Universal PC Master · Global Server
 
 <div align="center">
 
@@ -8,7 +8,7 @@
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00?style=for-the-badge&logo=sqlalchemy&logoColor=white)
 
 **동양미래대학교 컴퓨터소프트웨어공학과 졸업작품**  
-PC 하드웨어 모니터링 및 원격 최적화 시스템 — **서버 파트**
+PC 하드웨어 실시간 모니터링 및 원격 최적화 시스템 — **서버 인프라 파트 (Tier 2)**
 
 </div>
 
@@ -16,18 +16,19 @@ PC 하드웨어 모니터링 및 원격 최적화 시스템 — **서버 파트*
 
 ## 📌 목차
 
-- [프로젝트 개요](#-1-프로젝트-개요)
-- [시스템 아키텍처](#-2-시스템-아키텍처)
-- [기술 스택](#-3-기술-스택)
-- [서버 기능 상세](#-4-서버-기능-상세)
-- [API 엔드포인트 명세](#-5-api-엔드포인트-명세)
-- [데이터베이스 구조](#-6-데이터베이스-구조)
-- [실시간 웹 대시보드](#-7-실시간-웹-대시보드)
-- [설치 및 배포 가이드](#-8-설치-및-배포-가이드)
-- [외부 네트워크 협업 가이드 (ngrok)](#-9-외부-네트워크-협업-가이드-ngrok)
+- [프로젝트 개요](#overview)
+- [시스템 아키텍처](#architecture)
+- [기술 스택](#tech-stack)
+- [서버 기능 상세](#features)
+- [API 엔드포인트 명세](#api)
+- [데이터베이스 구조](#database)
+- [실시간 웹 대시보드](#dashboard)
+- [설치 및 배포 가이드](#installation)
+- [외부 네트워크 협업 가이드 (ngrok)](#ngrok)
 
 ---
 
+<a id="overview"></a>
 ## 📝 1. 프로젝트 개요
 
 | 기능 | 설명 |
@@ -39,6 +40,7 @@ PC 하드웨어 모니터링 및 원격 최적화 시스템 — **서버 파트*
 
 ---
 
+<a id="architecture"></a>
 ## 🌐 2. 시스템 아키텍처
 
 UPM은 **클라이언트(Agent) — 서버(Global Server) — 모바일/브라우저(Dashboard)** 로 연결되는 3-Tier 아키텍처입니다.
@@ -80,6 +82,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="tech-stack"></a>
 ## 🛠️ 3. 기술 스택
 
 | 분류 | 기술 |
@@ -95,6 +98,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="features"></a>
 ## 📂 4. 서버 기능 상세
 
 - **실시간 하드웨어 데이터 수집 및 유효성 검증**  
@@ -111,6 +115,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="api"></a>
 ## 📡 5. API 엔드포인트 명세
 
 | Method | Endpoint | Description |
@@ -143,6 +148,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="database"></a>
 ## 🗄️ 6. 데이터베이스 구조
 
 ### 시계열 로그 테이블 — `telemetry_logs`
@@ -161,6 +167,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="dashboard"></a>
 ## 📊 7. 실시간 웹 대시보드
 
 `/dashboard` 접속 시 다수 원격 PC 자원을 관제하는 통합 대시보드가 활성화됩니다.
@@ -172,9 +179,51 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="installation"></a>
 ## 🚀 8. 설치 및 배포 가이드
 
-### 🐳 Docker Compose 통합 배포
+### 💡 방법 A. 로컬 파이썬 가상환경 (Local venv)
+
+로컬 개발 및 개별 테스트 환경에 적합합니다.
+
+**1단계 — 가상환경 생성 및 활성화**
+
+```powershell
+# Windows (PowerShell)
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+```bash
+# Linux / macOS
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+**2단계 — 의존성 설치**
+
+```bash
+pip install fastapi uvicorn flask sqlalchemy pymysql pydantic cryptography
+```
+
+**3단계 — DB 연결 주소 수정**
+
+`main.py` 또는 `database.py` 상단의 접속 주소를 로컬 환경에 맞게 변경합니다.
+
+```python
+# 기본 패스워드: admin1234
+SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:admin1234@localhost:3306/upm_db"
+```
+
+**4단계 — 서버 가동**
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+---
+
+### 🐳 방법 B. Docker Compose 통합 배포 (권장)
 
 Ubuntu Server 또는 라즈베리파이 환경에서 단일 명령으로 DB + 서버를 통합 배포하는 실무형 방식입니다.
 
@@ -205,6 +254,7 @@ sudo docker compose down
 
 ---
 
+<a id="ngrok"></a>
 ## 🌐 9. 외부 네트워크 협업 가이드 (ngrok)
 
 팀원이 각자 다른 외부 환경에서 서버에 데이터를 전송하거나 대시보드를 연동할 때 사용합니다.
@@ -245,6 +295,6 @@ Forwarding  https://abcd-123-456.ngrok-free.app -> http://localhost:8000
 <div align="center">
 
 동양미래대학교 컴퓨터소프트웨어공학과 졸업작품 프로젝트  
-**UPM — Universal PC Manager**
+**UPM — Universal PC Master**
 
 </div>
