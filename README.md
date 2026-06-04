@@ -297,7 +297,7 @@ Forwarding  https://abcd-123-456.ngrok-free.app -> http://localhost:8000
 | 이름 | 역할 | 비고 |
 |:---:|:---:|:---|
 | 한준탁 | Server | [@Juntak0131](https://github.com/Juntak0131) |
-| 윤재호 | Server | [@joy12341234](https://github.com/joy1234134) |
+| 윤재호 | Server | [@joy12341234](https://github.com/joy12341234) |
 
 ---
 
