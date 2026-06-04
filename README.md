@@ -292,6 +292,15 @@ Forwarding  https://abcd-123-456.ngrok-free.app -> http://localhost:8000
 
 ---
 
+## 프로젝트 팀원
+
+| 이름 | 역할 | 비고 |
+|:---:|:---:|:---|
+| 한준탁 | Server | [@Juntak0131](https://github.com/Juntak0131) |
+| 윤재호 | Server | [@joy12341234](https://github.com/joy1234134) |
+
+---
+
 <div align="center">
 
 동양미래대학교 컴퓨터소프트웨어공학과 졸업작품 프로젝트  
