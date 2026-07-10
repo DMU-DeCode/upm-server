@@ -20,6 +20,7 @@ PC 하드웨어 실시간 모니터링 및 원격 최적화 시스템 — **서�
 - [시스템 아키텍처](#architecture)
 - [기술 스택](#tech-stack)
 - [서버 기능 상세](#features)
+- [🧠 최적화 알고리즘 (Smart Cleanup)](#algorithm)
 - [API 엔드포인트 명세](#api)
 - [데이터베이스 구조](#database)
 - [실시간 웹 대시보드](#dashboard)
@@ -115,14 +116,99 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="algorithm"></a>
+## 🧠 5. 최적화 알고리즘 (Smart Cleanup)
+
+> 💡 이번 업데이트의 **핵심 변경 사항**입니다. 기존에는 서버가 고정된 화이트/블랙리스트만 배포했지만, 이제 **수집된 실데이터를 분석해 종료 대상을 스스로 판단**하고, **서버 자기 자신·개발 도구·사용자 지정 프로세스는 절대 종료하지 않도록** 다단계 안전장치를 갖췄습니다.
+
+### 🎯 설계 목표
+
+| 목표 | 해결 방법 |
+|------|-----------|
+| **오탐(誤炭) 방지** | 시스템 필수·개발 도구·사용자 예외 프로세스를 종료 후보에서 원천 차단 |
+| **자기 보호** | 서버 자신(`python`/`uvicorn`)이 kill 목록에 오르는 자살 상황을 항상 제거 |
+| **똑똑한 판단** | 단순 메모리 크기가 아닌 **창 유무 · CPU 유휴 · 메모리**를 종합해 "진짜 놀고 있는" 프로세스만 정리 |
+| **데이터 기반** | 전체 PC에서 자주 잡히는 고메모리 프로세스를 빈도순으로 자동 집계해 글로벌 블랙리스트 생성 |
+
+### ⚙️ 판정 파이프라인 — `POST /api/v1/optimization/analyze`
+
+C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위 규칙**에 따라 위에서부터 순차 판정하며, 먼저 걸리는 규칙이 최종 결정을 내립니다.
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  프로세스 1건 판정 흐름 (위에서부터 우선 적용)                  │
+├────────────────────────────────────────────────────────────────┤
+│                                                                │
+│  ① 절대 보호 (HARD_PROTECT)                                     │
+│     isSystemCritical == true                                   │
+│     OR 개발도구·시스템·셸(python, code, svchost …)             │
+│     OR 사용자 예외 목록(machineId별 '종료 금지')              │
+│        └──▶  ✅ 보호 (종료 안 함)                               │
+│                                                                │
+│  ② 고메모리 강제 종료 (FORCE_KILL)                             │
+│     memory ≥ 1GB  →  창이 있어도 종료 (게임 등)               │
+│        └──▶  🔴 killList 추가                                   │
+│                                                                │
+│  ③ 똑똑한 정리 (IDLE_KILL) — 3가지 동시 만족                   │
+│     창 없음(hasVisibleWindow=false)                           │
+│     AND CPU 유휴 (cpuPercent < 1.0%)                           │
+│     AND memory ≥ 200MB                                         │
+│        └──▶  🔴 killList 추가                                   │
+│                                                                │
+│  ④ 위 어디에도 안 걸림  →  ✅ 보호 (그대로 둠)                 │
+│                                                                │
+├────────────────────────────────────────────────────────────────┤
+│  🛡️ 최종 안전장치: python / pythonw / uvicorn 은 점수와        │
+│     무관하게 killList에서 항상 제거 (서버 자기보호)           │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### 📐 판정 기준 상수
+
+| 상수 | 값 | 의미 |
+|------|----|------|
+| `FORCE_KILL_MEMORY_BYTES` | 1 GB (1,073,741,824) | 창이 있어도 무조건 종료하는 고메모리 임계값 |
+| `IDLE_MEMORY_BYTES` | 200 MB (209,715,200) | 유휴 프로세스로 판단할 최소 점유 메모리 |
+| `IDLE_CPU_THRESHOLD` | 1.0 % | 이 값 미만이면 CPU 유휴 상태로 간주 |
+| `MEMORY_THRESHOLD_BYTES` | 500 MB (524,288,000) | 글로벌 블랙리스트 후보로 집계할 고메모리 기준 |
+| `BLACKLIST_MAX` | 10 | 자동 생성 블랙리스트 최대 개수 |
+| `RECENT_WINDOW` | 1 시간 | 블랙리스트 집계 시 참고할 최근 데이터 범위 |
+
+### 📊 데이터 기반 글로벌 블랙리스트 — `GET /api/v1/optimization/rules`
+
+`process_logs` 테이블을 분석하여 **동적으로** 블랙리스트를 생성합니다.
+
+1. 최근 1시간 내 수집된 프로세스만 대상으로 제한
+2. `isSystemCritical == false` **AND** `memory ≥ 500MB` 조건 필터링
+3. 전체 PC에서의 **등장 빈도(freq) 내림차순** 정렬 → 상위 10개 선정
+4. 화이트리스트 프로세스 및 서버 자신(`python`/`uvicorn`)은 제외
+
+### 🔐 다단계 보호 계층
+
+| 계층 | 대상 | 역할 |
+|------|------|------|
+| `WHITELIST` | svchost, explorer, lsass 등 시스템 필수 | 블랙리스트에서 제외 |
+| `HARD_PROTECT` | VS Code, dotnet, git, 셸/터미널 등 개발도구 | 메모리·창과 무관하게 무조건 보호 |
+| `UserException` | machineId별 사용자가 직접 지정한 프로세스 | "절대 종료 금지" 개인화 예외 |
+| `_ALWAYS_EXCLUDE_FROM_KILL` | python / pythonw / uvicorn | 서버 자기 종료 방지 최종 방어선 |
+
+---
+
 <a id="api"></a>
-## 📡 5. API 엔드포인트 명세
+## 📡 6. API 엔드포인트 명세
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v1/metrics` | C# 에이전트로부터 실시간 메트릭 및 탑 프로세스 리스트 수신 후 DB 저장 |
 | `GET` | `/api/v1/logs` | 시계열 텔레메트리 로그 최신순 조회 (기본 최신 50개) |
-| `GET` | `/api/v1/optimization/rules` | 프로세스 제어용 글로벌 최적화 룰셋(블랙리스트/화이트리스트) 반환 |
+| `GET` | `/api/v1/metrics/history` | 모바일 앱용 최근 24개 CPU/RAM/GPU 추이 데이터 |
+| `GET` | `/api/v1/optimization/rules` | **데이터 기반 동적** 글로벌 최적화 룰셋(블랙/화이트리스트) 반환 |
+| `POST` | `/api/v1/optimization/analyze` | 🧠 실시간 프로세스 목록을 Smart Cleanup 알고리즘으로 판정해 `killList` 반환 |
+| `POST` | `/api/v1/optimization/exceptions` | machineId별 '절대 종료 금지' 예외 프로세스 등록/삭제 |
+| `GET` | `/api/v1/optimization/exceptions` | machineId별 예외 목록 조회 |
+| `POST` | `/api/v1/optimization/report` | 실제로 종료된 프로세스 이력 기록 |
+| `GET` | `/api/v1/optimization/history` | 종료 이력 조회 (machineId 필터 지원) |
+| `GET` | `/status` `POST` `/optimize` `/shutdown` | 모바일 앱용 최신 상태 조회 및 원격 최적화/종료 명령 |
 | `GET` | `/dashboard` | Chart.js 기반 실시간 통합 웹 대시보드 렌더링 |
 | `GET` | `/docs` | Swagger UI 기반 API 명세서 및 샌드박스 테스트 환경 |
 
@@ -149,7 +235,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 ---
 
 <a id="database"></a>
-## 🗄️ 6. 데이터베이스 구조
+## 🗄️ 7. 데이터베이스 구조
 
 ### 시계열 로그 테이블 — `telemetry_logs`
 
@@ -163,12 +249,40 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 | `gpuTemp` | FLOAT | NULLABLE | NVML 기반 실시간 GPU 온도 (°C) |
 | `timestamp` | DATETIME | DEFAULT CURRENT_TIMESTAMP | 데이터 적재 타임스탬프 |
 
-> **DB 자동 초기화**: 서버 구동 시 `telemetry_logs` 테이블 존재 여부를 자동 감사하며, 유실된 경우 `Base.metadata.create_all(engine)`으로 동적 스키마 생성합니다.
+### 프로세스 로그 테이블 — `process_logs`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | 레코드 고유 일련번호 |
+| `machineId` | VARCHAR(50) | 에이전트 PC 식별자 |
+| `processName` | VARCHAR(255) | 프로세스 이름 |
+| `memoryWorkingSetBytes` | BIGINT | 프로세스 점유 메모리 (bytes) |
+| `isSystemCritical` | BOOLEAN | 시스템 필수 프로세스 여부 |
+| `timestamp` | DATETIME | 수집 시각 |
+
+### 사용자 예외 테이블 — `user_exceptions`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | 레코드 고유 일련번호 |
+| `machineId` | VARCHAR(50), INDEX | 예외를 지정한 PC 식별자 |
+| `processName` | VARCHAR(255) | '절대 종료 금지'로 지정된 프로세스 |
+
+### 종료 이력 테이블 — `optimization_history`
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | INT (PK) | 레코드 고유 일련번호 |
+| `machineId` | VARCHAR(50), INDEX | 종료가 수행된 PC 식별자 |
+| `processName` | VARCHAR(255) | 실제로 종료된 프로세스 |
+| `timestamp` | DATETIME | 종료 시각 |
+
+> **DB 자동 초기화**: 서버 구동 시 모든 테이블 존재 여부를 자동 감사하며, 유실된 경우 `Base.metadata.create_all(engine)`으로 동적 스키마를 생성합니다. 기존 `gpuTemp` 컬럼은 `gpuUsage`로 자동 마이그레이션됩니다.
 
 ---
 
 <a id="dashboard"></a>
-## 📊 7. 실시간 웹 대시보드
+## 📊 8. 실시간 웹 대시보드
 
 `/dashboard` 접속 시 다수 원격 PC 자원을 관제하는 통합 대시보드가 활성화됩니다.
 
@@ -180,7 +294,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 ---
 
 <a id="installation"></a>
-## 🚀 8. 설치 및 배포 가이드
+## 🚀 9. 설치 및 배포 가이드
 
 ### 💡 방법 A. 로컬 파이썬 가상환경 (Local venv)
 
@@ -255,7 +369,7 @@ sudo docker compose down
 ---
 
 <a id="ngrok"></a>
-## 🌐 9. 외부 네트워크 협업 가이드 (ngrok)
+## 🌐 10. 외부 네트워크 협업 가이드 (ngrok)
 
 팀원이 각자 다른 외부 환경에서 서버에 데이터를 전송하거나 대시보드를 연동할 때 사용합니다.
 
