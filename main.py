@@ -632,7 +632,7 @@ async def dashboard():
 
     <div class="container">
         <div class="summary-grid">
-            <div class="card">ㅇ
+            <div class="card">
                 <div class="card-title">LATEST CPU USAGE</div>
                 <div class="card-value" id="curCpu">0%</div>
                 <div class="card-sub" id="curCpuId">-</div>
