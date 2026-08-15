@@ -19,6 +19,7 @@ PC 하드웨어 실시간 모니터링 및 원격 최적화 시스템 — **서�
 - [프로젝트 개요](#overview)
 - [시스템 아키텍처](#architecture)
 - [기술 스택](#tech-stack)
+- [프로젝트 구조](#structure)
 - [서버 기능 상세](#features)
 - [🧠 최적화 알고리즘 (Smart Cleanup)](#algorithm)
 - [API 엔드포인트 명세](#api)
@@ -99,8 +100,43 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 
 ---
 
+<a id="structure"></a>
+## 📁 4. 프로젝트 구조
+
+기존에는 모든 로직이 `main.py` 한 파일(약 780줄)에 몰려 있었으나, **역할별 모듈로 분리**하여 유지보수성과 가독성을 높였습니다. 파일명만으로 어떤 코드가 들어있는지 바로 알 수 있도록 구성했습니다.
+
+```
+upm-server/
+├── main.py                    # 앱 진입점 — FastAPI 초기화 · CORS · 라우터 등록 · 서버 실행
+├── database.py                # DB 엔진 · 세션(SessionLocal) · get_db · 테이블 생성/마이그레이션(init_db)
+├── models.py                  # SQLAlchemy DB 테이블 정의 (4종)
+├── schemas.py                 # Pydantic 요청/응답 모델 (데이터 검증)
+├── optimizer.py               # 최적화 룰셋 · 화이트리스트/보호목록 · 프로세스 판정 로직
+└── routers/                   # 기능별 API 라우터 패키지
+    ├── metrics.py             #   텔레메트리 수신 · 상태 · 로그 · 추이 조회
+    ├── control.py             #   최적화 · 종료 · 재시작 원격 명령
+    ├── optimization.py        #   룰셋 · 프로세스 분석 · 예외 관리 · 종료 이력
+    └── dashboard.py           #   Chart.js 기반 실시간 웹 대시보드 HTML
+```
+
+| 파일 | 책임 | 주요 내용 |
+|------|------|-----------|
+| `main.py` | **진입점** | 앱 초기화, `init_db()` 호출, 4개 라우터 `include_router` 등록 |
+| `database.py` | **DB 인프라** | 엔진/세션 생성, `get_db` 의존성, `gpuTemp → gpuUsage` 자동 마이그레이션 |
+| `models.py` | **테이블 정의** | `TelemetryLog` · `ProcessLog` · `UserException` · `OptimizationHistory` |
+| `schemas.py` | **데이터 검증** | `TelemetryData` · `ProcessInfo` · `AnalyzeRequest` · `ExceptionRequest` · `ReportRequest` 등 |
+| `optimizer.py` | **최적화 두뇌** | `WHITELIST` · `HARD_PROTECT` · `optimize_rules()` · 서버 자기보호(`_strip_self_kill`) |
+| `routers/metrics.py` | **모니터링 API** | `/api/v1/metrics` · `/status` · `/api/v1/logs` · `/api/v1/metrics/history` |
+| `routers/control.py` | **제어 API** | `/optimize` · `/shutdown` · `/restart` |
+| `routers/optimization.py` | **최적화 API** | `/api/v1/optimization/*` (rules · analyze · exceptions · report · history) |
+| `routers/dashboard.py` | **대시보드** | `/dashboard` HTML 페이지 렌더링 |
+
+> 💡 파일을 나눈 뒤에도 **모든 API 경로와 동작은 이전과 100% 동일**합니다. `main.py`가 각 라우터를 `include_router()`로 등록하므로 클라이언트(C# 에이전트·모바일 앱) 측 수정은 필요 없습니다. 서버 실행 방법도 그대로 `python main.py` 입니다.
+
+---
+
 <a id="features"></a>
-## 📂 4. 서버 기능 상세
+## 📂 5. 서버 기능 상세
 
 - **실시간 하드웨어 데이터 수집 및 유효성 검증**  
   C# 에이전트로부터 전달받은 부하 수치를 비동기로 영구 적재하고, Pydantic 스키마 필터링으로 비정상 패킷을 차단합니다.
@@ -117,7 +153,7 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 ---
 
 <a id="algorithm"></a>
-## 🧠 5. 최적화 알고리즘 (Smart Cleanup)
+## 🧠 6. 최적화 알고리즘 (Smart Cleanup)
 
 > 💡 이번 업데이트의 **핵심 변경 사항**입니다. 기존에는 서버가 고정된 화이트/블랙리스트만 배포했지만, 이제 **수집된 실데이터를 분석해 종료 대상을 스스로 판단**하고, **서버 자기 자신·개발 도구·사용자 지정 프로세스는 절대 종료하지 않도록** 다단계 안전장치를 갖췄습니다.
 
@@ -195,7 +231,7 @@ C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위
 ---
 
 <a id="api"></a>
-## 📡 6. API 엔드포인트 명세
+## 📡 7. API 엔드포인트 명세
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -235,7 +271,7 @@ C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위
 ---
 
 <a id="database"></a>
-## 🗄️ 7. 데이터베이스 구조
+## 🗄️ 8. 데이터베이스 구조
 
 ### 시계열 로그 테이블 — `telemetry_logs`
 
@@ -282,7 +318,7 @@ C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위
 ---
 
 <a id="dashboard"></a>
-## 📊 8. 실시간 웹 대시보드
+## 📊 9. 실시간 웹 대시보드
 
 `/dashboard` 접속 시 다수 원격 PC 자원을 관제하는 통합 대시보드가 활성화됩니다.
 
@@ -294,7 +330,7 @@ C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위
 ---
 
 <a id="installation"></a>
-## 🚀 9. 설치 및 배포 가이드
+## 🚀 10. 설치 및 배포 가이드
 
 ### 💡 방법 A. 로컬 파이썬 가상환경 (Local venv)
 
@@ -369,7 +405,7 @@ sudo docker compose down
 ---
 
 <a id="ngrok"></a>
-## 🌐 10. 외부 네트워크 협업 가이드 (ngrok)
+## 🌐 11. 외부 네트워크 협업 가이드 (ngrok)
 
 팀원이 각자 다른 외부 환경에서 서버에 데이터를 전송하거나 대시보드를 연동할 때 사용합니다.
 
