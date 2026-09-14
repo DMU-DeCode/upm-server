@@ -14,6 +14,7 @@
     routers/control.py     : 최적화/종료/재시작 명령
     routers/optimization.py: 룰셋/분석/예외/이력 API
     routers/dashboard.py   : 웹 대시보드 페이지
+    routers/admin.py       : 관리자 웹사이트용 API (인증 필요)
 """
 
 import sys
@@ -30,7 +31,7 @@ except Exception:
     pass
 
 from database import init_db
-from routers import metrics, control, optimization, dashboard
+from routers import metrics, control, optimization, dashboard, admin
 
 # 서버 실행 시 테이블 자동 생성 + gpuTemp → gpuUsage 마이그레이션
 init_db()
@@ -51,6 +52,7 @@ app.include_router(metrics.router)
 app.include_router(control.router)
 app.include_router(optimization.router)
 app.include_router(dashboard.router)
+app.include_router(admin.router)
 
 
 # [서버 실행]
