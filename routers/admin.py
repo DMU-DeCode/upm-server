@@ -4,36 +4,25 @@
 - GET /api/v1/admin/machines/{machine_id} : 특정 PC 상세(텔레메트리/종료이력/예외목록)
 - GET /api/v1/admin/summary               : 전체 요약(총/온라인 PC 수, 평균 사용률, 오늘 종료건수)
 
-인증: 요청 헤더 X-Admin-Token 값을 환경변수 ADMIN_API_TOKEN과 상수시간 비교한다.
+인증: 세션 쿠키 기반(require_admin_session). 미인증 시 /login으로 리다이렉트한다.
 """
 
-import os
-import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query
 from sqlalchemy import and_, desc, func
 from sqlalchemy.orm import Session
 
 from database import get_db
 from models import TelemetryLog, OptimizationHistory, UserException
-
-# 관리자 토큰: 환경변수에서 읽고, 미설정 시 개발용 기본값 사용.
-# ⚠️ 배포 환경에서는 반드시 ADMIN_API_TOKEN 환경변수를 설정할 것.
-ADMIN_API_TOKEN = os.environ.get("ADMIN_API_TOKEN", "dev-admin-token-change-me")
+from routers.auth_web import require_admin_session
 
 # 온라인 판정 기준: 최근 수신이 5분 이내면 online
 ONLINE_WINDOW = timedelta(minutes=5)
 
 
-def require_admin(x_admin_token: str = Header(None, alias="X-Admin-Token")):
-    """X-Admin-Token 헤더를 관리자 토큰과 비교해 인증한다. 실패 시 401."""
-    if not x_admin_token or not secrets.compare_digest(x_admin_token, ADMIN_API_TOKEN):
-        raise HTTPException(status_code=401, detail="관리자 인증에 실패했습니다.")
-
-
-# 라우터 레벨 의존성으로 3개 엔드포인트 전부 자동 인증
-router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(require_admin)])
+# 라우터 레벨 의존성으로 3개 엔드포인트 전부 세션 인증
+router = APIRouter(prefix="/api/v1/admin", dependencies=[Depends(require_admin_session)])
 
 
 def _latest_per_machine(db: Session):

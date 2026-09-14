@@ -5,11 +5,24 @@
 - 서버 시작 시 실행되는 테이블 생성/컬럼 마이그레이션(init_db)
 """
 
+import os
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text, inspect as sa_inspect
 from sqlalchemy.orm import declarative_base, sessionmaker
 
+# .env 자동 로드 (실제 .env 파일이 없으면 조용히 넘어감)
+load_dotenv()
+
 # [DB 설정 및 엔진 생성]
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:1234@localhost:3306/upm_db"
+# 접속 문자열은 환경변수 UPM_DB_URL로만 주입한다. (하드코딩 금지)
+SQLALCHEMY_DATABASE_URL = os.getenv("UPM_DB_URL")
+if not SQLALCHEMY_DATABASE_URL:
+    raise RuntimeError(
+        "환경변수 UPM_DB_URL이 설정되지 않았습니다. "
+        ".env 파일 또는 환경변수에 UPM_DB_URL을 지정하세요. "
+        "(예시는 .env.example 참고)"
+    )
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

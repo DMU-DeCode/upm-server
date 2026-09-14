@@ -24,7 +24,7 @@ PC 하드웨어 실시간 모니터링 및 원격 최적화 시스템 — **서�
 - [🧠 최적화 알고리즘 (Smart Cleanup)](#algorithm)
 - [API 엔드포인트 명세](#api)
 - [데이터베이스 구조](#database)
-- [실시간 웹 대시보드](#dashboard)
+- [관리자 웹 대시보드 & 인증](#dashboard)
 - [설치 및 배포 가이드](#installation)
 - [외부 네트워크 협업 가이드 (ngrok)](#ngrok)
 
@@ -91,10 +91,12 @@ C# 에이전트가 Windows Performance Counter와 NVML API로 자원을 계측�
 |------|------|
 | Language | Python 3.11+ |
 | Async Web Framework | FastAPI (고성능 ASGI, OpenAPI 자동 문서화) |
-| Dashboard Server | Flask (경량 웹 모듈 기반 대시보드 렌더링) |
+| Dashboard 렌더링 | FastAPI `HTMLResponse` + Chart.js (관리자 웹 UI 자체 호스팅) |
 | ORM | SQLAlchemy 2.0+ (비동기 쿼리 및 커넥션 풀링 최적화) |
 | DB Driver | PyMySQL (MySQL / MariaDB 연동 순수 파이썬 드라이버) |
 | Data Validation | Pydantic v2 (타입 캐스팅 및 JSON 스키마 검증 자동화) |
+| 관리자 인증 | 세션 쿠키(HMAC-SHA256 서명, 표준 라이브러리 `hmac`) |
+| 환경설정 | python-dotenv (`.env` 기반 시크릿 주입, 하드코딩 배제) |
 | Database | MySQL 8.0 / MariaDB |
 | Containerization | Docker / Docker Compose |
 
@@ -116,20 +118,24 @@ upm-server/
     ├── metrics.py             #   텔레메트리 수신 · 상태 · 로그 · 추이 조회
     ├── control.py             #   최적화 · 종료 · 재시작 원격 명령
     ├── optimization.py        #   룰셋 · 프로세스 분석 · 예외 관리 · 종료 이력
-    └── dashboard.py           #   Chart.js 기반 실시간 웹 대시보드 HTML
+    ├── dashboard.py           #   관리자 웹 대시보드(PC 목록 · PC 상세) HTML
+    ├── admin.py               #   관리자 웹 전용 조회 API (/api/v1/admin/*)
+    └── auth_web.py            #   관리자 세션 로그인 (/login · /logout · 세션 검증)
 ```
 
 | 파일 | 책임 | 주요 내용 |
 |------|------|-----------|
-| `main.py` | **진입점** | 앱 초기화, `init_db()` 호출, 4개 라우터 `include_router` 등록 |
-| `database.py` | **DB 인프라** | 엔진/세션 생성, `get_db` 의존성, `gpuTemp → gpuUsage` 자동 마이그레이션 |
+| `main.py` | **진입점** | 앱 초기화, `init_db()` 호출, 6개 라우터 `include_router` 등록 |
+| `database.py` | **DB 인프라** | 엔진/세션 생성, `get_db` 의존성, `gpuTemp → gpuUsage` 자동 마이그레이션, `.env`(UPM_DB_URL) 로드 |
 | `models.py` | **테이블 정의** | `TelemetryLog` · `ProcessLog` · `UserException` · `OptimizationHistory` |
 | `schemas.py` | **데이터 검증** | `TelemetryData` · `ProcessInfo` · `AnalyzeRequest` · `ExceptionRequest` · `ReportRequest` 등 |
 | `optimizer.py` | **최적화 두뇌** | `WHITELIST` · `HARD_PROTECT` · `optimize_rules()` · 서버 자기보호(`_strip_self_kill`) |
 | `routers/metrics.py` | **모니터링 API** | `/api/v1/metrics` · `/status` · `/api/v1/logs` · `/api/v1/metrics/history` |
 | `routers/control.py` | **제어 API** | `/optimize` · `/shutdown` · `/restart` |
 | `routers/optimization.py` | **최적화 API** | `/api/v1/optimization/*` (rules · analyze · exceptions · report · history) |
-| `routers/dashboard.py` | **대시보드** | `/dashboard` HTML 페이지 렌더링 |
+| `routers/dashboard.py` | **관리자 대시보드** | `/dashboard`(PC 목록) · `/dashboard/{machineId}`(PC 상세) HTML 렌더링 |
+| `routers/admin.py` | **관리자 API** | `/api/v1/admin/*` (machines · summary) — 세션 인증 필요 |
+| `routers/auth_web.py` | **관리자 인증** | 세션 쿠키 로그인/로그아웃, `require_admin_session` 의존성 |
 
 > 💡 파일을 나눈 뒤에도 **모든 API 경로와 동작은 이전과 100% 동일**합니다. `main.py`가 각 라우터를 `include_router()`로 등록하므로 클라이언트(C# 에이전트·모바일 앱) 측 수정은 필요 없습니다. 서버 실행 방법도 그대로 `python main.py` 입니다.
 
@@ -245,8 +251,17 @@ C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위
 | `POST` | `/api/v1/optimization/report` | 실제로 종료된 프로세스 이력 기록 |
 | `GET` | `/api/v1/optimization/history` | 종료 이력 조회 (machineId 필터 지원) |
 | `GET` | `/status` `POST` `/optimize` `/shutdown` | 모바일 앱용 최신 상태 조회 및 원격 최적화/종료 명령 |
-| `GET` | `/dashboard` | Chart.js 기반 실시간 통합 웹 대시보드 렌더링 |
+| `GET` | `/dashboard` | 관리자 웹 — PC 목록 화면 렌더링 🔒 |
+| `GET` | `/dashboard/{machineId}` | 관리자 웹 — PC 상세 화면(추이 차트·종료 이력·예외) 렌더링 🔒 |
+| `GET` | `/api/v1/admin/summary` | 전체 요약(총/온라인 PC 수, 평균 CPU·RAM, 오늘 종료 건수) 🔒 |
+| `GET` | `/api/v1/admin/machines` | 등록된 PC 목록(머신별 최신 상태 + 온라인 여부) 🔒 |
+| `GET` | `/api/v1/admin/machines/{machineId}` | 특정 PC 상세(텔레메트리·종료 이력·예외 목록) 🔒 |
+| `GET` `POST` | `/login` | 관리자 로그인 페이지 / 자격증명 검증 후 세션 쿠키 발급 |
+| `POST` | `/logout` | 세션 쿠키 삭제 후 로그인 페이지로 이동 |
 | `GET` | `/docs` | Swagger UI 기반 API 명세서 및 샌드박스 테스트 환경 |
+
+> 🔒 표시된 엔드포인트는 **관리자 세션 인증**이 필요합니다. 미인증 요청은 `/login`으로 리다이렉트됩니다.
+> 에이전트·모바일 앱이 사용하는 `/api/v1/metrics` · `/status` · `/api/v1/optimization/*` · `/optimize` · `/shutdown` · `/restart` 는 인증 대상이 **아닙니다**(기존 동작 유지).
 
 ### 📥 POST `/api/v1/metrics` 요청 예시
 
@@ -318,14 +333,36 @@ C# 에이전트가 보낸 실시간 프로세스 목록을 아래 **우선순위
 ---
 
 <a id="dashboard"></a>
-## 📊 9. 실시간 웹 대시보드
+## 📊 9. 관리자 웹 대시보드 & 인증
 
-`/dashboard` 접속 시 다수 원격 PC 자원을 관제하는 통합 대시보드가 활성화됩니다.
+관리자 웹은 **세션 쿠키 로그인**으로 보호되며, **PC 목록 → PC 상세**의 2단계 관제 화면으로 구성됩니다. 디자인 톤은 `--primary: #4f46e5` · Inter 폰트 · 카드 UI로 통일했습니다.
 
-- **실시간 요약 메트릭 카드** — 최신 단말기의 CPU / RAM / GPU 점유율을 컬러 배지와 함께 표시
-- **CPU & RAM 트렌드 차트** — Chart.js 기반 시계열 라인 그래프로 리소스 변화 추이 추적
-- **GPU 퍼포먼스 면적 차트** — GPU 특수성 모니터링을 위한 Area Line Chart 적용
-- **실시간 로그 그리드** — 최신 이력 10개를 10초 주기 비동기 자동 갱신 (브라우저 깜빡임 없음)
+### 🔐 세션 로그인 인증
+
+| 항목 | 내용 |
+|------|------|
+| 자격증명 | 환경변수 `UPM_ADMIN_USER` / `UPM_ADMIN_PASSWORD` 와 `secrets.compare_digest`로 **상수시간 비교** (타이밍 공격 방지) |
+| 세션 쿠키 | `UPM_SESSION_SECRET`으로 **HMAC-SHA256 서명**. `HttpOnly` · `SameSite=Lax` · **유효기간 2시간** |
+| 보호 범위 | `/dashboard`, `/dashboard/{machineId}`, `/api/v1/admin/*` — 미인증 시 `/login`으로 리다이렉트 |
+| 비보호 범위 | 에이전트·모바일 앱 엔드포인트(`/api/v1/metrics`, `/status`, `/api/v1/optimization/*`, `/optimize`, `/shutdown`, `/restart`)는 **인증 미적용** |
+| 로그인/로그아웃 | `POST /login`(성공 시 쿠키 발급 → `/dashboard`) · `POST /logout`(쿠키 삭제 → `/login`) |
+
+> 외부 의존성 없이 표준 라이브러리 `hmac`으로 쿠키를 서명/검증하므로 별도 세션 스토리지가 필요 없습니다.
+
+### 🖥️ PC 목록 화면 — `/dashboard`
+
+- **상단 요약 카드 4종** — 총 PC 수 · 온라인 PC 수 · 평균 CPU · 평균 RAM (`/api/v1/admin/summary`)
+- **PC 카드 그리드** — 머신별 `machineId`, 온라인/오프라인 배지, CPU·RAM·GPU 사용률 막대, 마지막 수신 시각 (`/api/v1/admin/machines`)
+- 카드 클릭 시 해당 PC 상세 화면으로 이동, **10초 주기 자동 갱신**
+
+### 🔎 PC 상세 화면 — `/dashboard/{machineId}`
+
+- **현재 상태 카드** — 최신 CPU / RAM / GPU 수치 + 온라인 배지
+- **추이 차트** — CPU & RAM 라인 차트 + GPU 면적 차트 (Chart.js)
+- **최근 종료된 프로세스 이력** 테이블 · **등록된 예외 프로세스** 목록 (`/api/v1/admin/machines/{machineId}`)
+- 데이터가 없을 때는 "기록 없음" 등 안내 문구를 표시하며 **10초 주기 자동 갱신**
+
+> 🛡️ 모든 동적 값은 `textContent`/`createElement`로 주입하여 문자열 `innerHTML` 조립을 배제했습니다(XSS 표면 최소화).
 
 ---
 
@@ -353,17 +390,28 @@ source .venv/bin/activate
 **2단계 — 의존성 설치**
 
 ```bash
-pip install fastapi uvicorn flask sqlalchemy pymysql pydantic cryptography
+pip install fastapi uvicorn sqlalchemy pymysql pydantic python-dotenv
 ```
 
-**3단계 — DB 연결 주소 수정**
+**3단계 — 환경변수 설정 (`.env`)**
 
-`main.py` 또는 `database.py` 상단의 접속 주소를 로컬 환경에 맞게 변경합니다.
+DB 접속 주소·비밀번호는 **하드코딩하지 않고** 환경변수로 주입합니다. `.env.example`을 복사해 `.env`를 만들고 값을 채웁니다. (`.env`는 `.gitignore`에 포함되어 커밋되지 않습니다.)
 
-```python
-# 기본 패스워드: admin1234
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:admin1234@localhost:3306/upm_db"
+```bash
+cp .env.example .env
 ```
+
+```ini
+# .env
+UPM_DB_URL=mysql+pymysql://root:비밀번호@localhost:3306/upm_db
+
+# 관리자 웹 로그인 (세션 쿠키 인증)
+UPM_ADMIN_USER=admin
+UPM_ADMIN_PASSWORD=강력한_비밀번호로_변경
+UPM_SESSION_SECRET=길고_무작위한_서명키로_변경
+```
+
+> `UPM_DB_URL`이 없으면 서버는 기동을 거부합니다(잘못된 접속 정보로 조용히 실행되는 것을 방지).
 
 **4단계 — 서버 가동**
 
@@ -371,17 +419,21 @@ SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:admin1234@localhost:3306/upm_db"
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+접속 후 `/dashboard`로 이동하면 로그인 페이지(`/login`)로 리다이렉트되며, 위 관리자 계정으로 로그인하면 관제 화면에 진입합니다.
+
 ---
 
 ### 🐳 방법 B. Docker Compose 통합 배포 (권장)
 
 Ubuntu Server 또는 라즈베리파이 환경에서 단일 명령으로 DB + 서버를 통합 배포하는 실무형 방식입니다.
 
-**1단계 — DB 연결 주소를 Docker 내부 네트워크로 변경**
+**1단계 — DB 연결 주소를 Docker 내부 네트워크로 지정**
 
-```python
-# 컨테이너 서비스 이름(db)으로 변경
-SQLALCHEMY_DATABASE_URL = "mysql+pymysql://root:1234@db:3306/upm_db"
+`.env`의 `UPM_DB_URL` 호스트를 컨테이너 서비스 이름(`db`)으로 지정합니다.
+
+```ini
+# .env
+UPM_DB_URL=mysql+pymysql://root:비밀번호@db:3306/upm_db
 ```
 
 **2단계 — 빌드 및 백그라운드 배포**

@@ -134,6 +134,9 @@ celerybeat.pid
 # SageMath parsed files
 *.sage.py
 
+# AI assistant local instructions (팀 공유 대상 아님)
+CLAUDE.md
+
 # Environments
 .env
 .envrc
