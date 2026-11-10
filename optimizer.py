@@ -25,6 +25,9 @@ WHITELIST = [
     "python", "pythonw", "uvicorn", "node", "dotnet", "msbuild",
     "code", "devenv", "servicehub", "cmd", "powershell", "pwsh",
     "windowsterminal", "conhost", "git", "ssh",
+    # UPM 본체 / Ulanzi Deck / Antigravity 보호
+    "upm.desktop", "ulanzideck", "qtwebengineprocess",
+    "antigravity", "language_server_windows_x64",
 ]
 _WHITELIST_SET = {name.lower() for name in WHITELIST}
 

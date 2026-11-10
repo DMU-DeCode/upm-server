@@ -8,30 +8,41 @@
 
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from database import SessionLocal, get_db
 from models import TelemetryLog, ProcessLog
+from routers.control import pop_pending_command, set_latest_client_ip
 from schemas import TelemetryData, TelemetryResponse
 
 router = APIRouter()
 
-# RAM 실수치 캐시 (DB 스키마 변경 없이 메모리 유지)
+# RAM 실수치 및 GPU 온도 캐시 (DB 스키마 변경 없이 메모리 유지)
 _latest_ram_used_gb: float = 0.0
 _latest_ram_total_gb: float = 0.0
+_latest_gpu_temp: float = 0.0
 
 
 # 텔레메트리 데이터 수신 및 DB 저장
 @router.post("/api/v1/metrics")
-async def receive_metrics(data: TelemetryData, db: Session = Depends(get_db)):
-    global _latest_ram_used_gb, _latest_ram_total_gb
+async def receive_metrics(
+    data: TelemetryData,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    global _latest_ram_used_gb, _latest_ram_total_gb, _latest_gpu_temp
     print(f"[{data.timestamp}] 수신 시도: {data.machineId}")
     print(f" C#이 보낸 GPU 온도 원본: {data.gpuTemperatureCelsius} 도")
 
+    if request.client and request.client.host:
+        set_latest_client_ip(request.client.host)
+
     _latest_ram_used_gb = data.ramUsedGb
     _latest_ram_total_gb = data.ramTotalGb
+    if data.gpuTemperatureCelsius is not None:
+        _latest_gpu_temp = data.gpuTemperatureCelsius
 
     try:
         gpu_value = data.gpuUsagePercent if data.gpuUsagePercent is not None else (data.gpuTemperatureCelsius or 0.0)
@@ -55,8 +66,13 @@ async def receive_metrics(data: TelemetryData, db: Session = Depends(get_db)):
             ))
 
         db.commit()
-        print(f"✅ [{data.machineId}] MySQL 데이터 저장 성공 (프로세스 {len(data.topProcesses)}건 포함)")
-        return {"status": "success", "message": "데이터가 DB에 저장되었습니다."}
+        pending_cmd = pop_pending_command()
+        print(f"✅ [{data.machineId}] MySQL 데이터 저장 성공 (프로세스 {len(data.topProcesses)}건 포함, pendingCommand={pending_cmd})")
+        return {
+            "status": "success",
+            "message": "데이터가 DB에 저장되었습니다.",
+            "pendingCommand": pending_cmd,
+        }
 
     except Exception as e:
         db.rollback()
@@ -75,7 +91,7 @@ async def get_status():
                 "cpu": result.cpuUsage,
                 "ram": result.ramUsage,
                 "gpu": result.gpuUsage,
-                "gpuTemp": 0,
+                "gpuTemp": _latest_gpu_temp,
                 "ram_used": _latest_ram_used_gb,
                 "ram_total": _latest_ram_total_gb,
             }
